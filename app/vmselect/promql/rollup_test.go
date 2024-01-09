@@ -1,6 +1,7 @@
 package promql
 
 import (
+	"fmt"
 	"math"
 	"testing"
 
@@ -157,6 +158,20 @@ func TestDeltaValues(t *testing.T) {
 	deltaValues(values)
 	valuesExpected = []float64{34, 10, 21, 33, 34, 65, 12, 32, 32, 2, 0, 0}
 	testRowsEqual(t, values, testTimestamps, valuesExpected, testTimestamps)
+
+	originValue := []float64{0.041584, 0.059427, 2.099759, 2.900235, 2.881711, 1.624174, 2.978677, 2.932636, 2.314808, 2.861191, 1.97559, 1.951707, 0.031856, 0.029362, 0.057255, 0.039876, 0.064509, 0.065325, 0.055164, 0.050771, 0.046085, 0.016025, 0.04161, 1.620809, 1.782001, 0.02911, 0.06458, 0.058656, 0.032674, 2.749982, 2.962138, 0.03796, 2.603097, 3.010852, 1.629407, 1.760748, 2.358312, 2.130346, 2.61475, 2.083208, 1.651808, 0.042684, 0.062364, 0.074053, 0.04183, 0.057822, 0.049879, 0.05491, 0.016355, 0.040654, 0.017487, 0.033118, 0.041868, 0.035406, 0.04206, 0.050171, 3.565958, 1.721435, 2.973004, 1.901614, 0.049848, 0.016913, 0.041258, 0.016136, 2.7518, 2.140669, 0.044878, 1.887095, 2.546569, 2.490149, 0.045, 0.035684, 0.062454, 0.058296}
+	values = make([]float64, len(originValue))
+	copy(values, originValue)
+	removeCounterResets(values)
+	var prev float64
+	for i, v := range values {
+		if v < prev {
+			// error:  value should keep getting bigger 37; cur 21.073813999999995; pre 21.073814; origincur: 2.130346, originPre: 2.358312
+			// error:  value should keep getting bigger 73; cur 41.64071500000001; pre 41.640715000000014; origincur: 0.058296, originPre: 0.062454
+			fmt.Printf("error: unexpected value keep getting bigger %d; cur %v; pre %v; origincur: %v, originPre: %v\n", i, v, prev, originValue[i], originValue[i-1])
+		}
+		prev = v
+	}
 }
 
 func TestDerivValues(t *testing.T) {

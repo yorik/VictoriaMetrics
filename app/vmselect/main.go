@@ -176,7 +176,6 @@ func RequestHandler(w http.ResponseWriter, r *http.Request) bool {
 		promql.ResetRollupResultCache()
 		return true
 	}
-
 	if strings.HasPrefix(path, "/api/v1/label/") {
 		s := path[len("/api/v1/label/"):]
 		if strings.HasSuffix(s, "/values") {

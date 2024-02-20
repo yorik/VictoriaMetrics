@@ -19,7 +19,7 @@ function toggleByID(id) {
 
 function debounce(func, delay) {
     let timer;
-    return function(...args) {
+    return function (...args) {
         clearTimeout(timer);
         timer = setTimeout(() => {
             func.apply(this, args);
@@ -27,75 +27,87 @@ function debounce(func, delay) {
     };
 }
 
-$('#filter').on("keyup", debounce(filter, 500));
+$('#search').on("keyup", debounce(search, 500));
 
-function filter(){
+function search() {
     $(".rule-table").removeClass('show');
     $(".rule").show();
-    
-    if($("#filter").val().length === 0){
-        $(".group-heading").show()
+
+    let groupHeader = $(".group-heading")
+    let searchPhrase = $("#search").val().toLowerCase()
+    if (searchPhrase.length === 0) {
+        groupHeader.show()
+        setParamURL('search', '')
         return
     }
 
-    $(".group-heading").hide()
+    groupHeader.hide()
 
-    filterRuleByName();
-    filterRuleByLabels();
-    filterGroupsByName();
+    searchPhrase = searchPhrase.toLowerCase()
+    filterRuleByName(searchPhrase);
+    filterRuleByLabels(searchPhrase);
+    filterGroupsByName(searchPhrase);
+
+    setParamURL('search', searchPhrase)
 }
 
-function filterGroupsByName(){
-    $( ".group-heading" ).each(function() {
-        const groupName = $(this).attr('data-group-name');
-        const filter = $("#filter").val()
-        const hasValue = groupName.indexOf(filter) >= 0
+function setParamURL(key, value) {
+    let url = new URL(location.href)
+    url.searchParams.set(key, value);
+    window.history.replaceState(null, null, `?${url.searchParams.toString()}`);
+}
 
-        if (hasValue){
-            const target = $(this).attr("data-bs-target");
-            
-            $(this).show();
-            $(`div[id="${target}"] .rule`).show();
+function getParamURL(key) {
+    let url = new URL(location.href)
+    return url.searchParams.get(key)
+}
+
+function filterGroupsByName(searchPhrase) {
+    $(".group-heading").each(function () {
+        const groupName = $(this).attr('data-group-name').toLowerCase();
+        const hasValue = groupName.indexOf(searchPhrase) >= 0
+
+        if (!hasValue) {
+            return
         }
+
+        const target = $(this).attr("data-bs-target");
+        $(`div[id="${target}"] .rule`).show();
+        $(this).show();
     });
 }
 
-function filterRuleByName(){
-    $( ".rule" ).each(function() {
+function filterRuleByName(searchPhrase) {
+    $(".rule").each(function () {
         const ruleName = $(this).attr("data-rule-name");
-        const filter = $("#filter").val()
-        const hasValue = ruleName.indexOf(filter) >= 0
+        const hasValue = ruleName.indexOf(searchPhrase) >= 0
 
-        if (hasValue){
-            const target = $(this).attr('data-bs-target')
-
-            $(`#rules-${target}`).addClass('show');
-            $(`div[data-bs-target='rules-${target}']`).show();
-            $(this).show();
-        }else{
+        if (!hasValue) {
             $(this).hide();
+            return
         }
-    });  
+
+        const target = $(this).attr('data-bs-target')
+        $(`#rules-${target}`).addClass('show');
+        $(`div[data-bs-target='rules-${target}']`).show();
+        $(this).show();
+    });
 }
 
-function filterRuleByLabels(){
-    $( ".rule" ).each(function() {
-        const filter = $("#filter").val()
-        
-        const matches = $( ".label", this ).filter(function() {
+function filterRuleByLabels(searchPhrase) {
+    $(".rule").each(function () {
+        const matches = $(".label", this).filter(function () {
             const label = $(this).text();
-            const hasValue = label.indexOf(filter) >= 0
-            return hasValue;
-        }).length; 
+            return label.indexOf(searchPhrase) >= 0;
+        }).length;
 
-        if (matches > 0){
+        if (matches > 0) {
             const target = $(this).attr('data-bs-target')
-
             $(`#rules-${target}`).addClass('show');
             $(`div[data-bs-target='rules-${target}']`).show();
             $(this).show();
         }
-    }); 
+    });
 }
 
 $(document).ready(function () {
@@ -114,6 +126,13 @@ $(document).ready(function () {
             toggle: true
         });
     });
+
+    // update search element with value from URL, if any
+    let searchPhrase = getParamURL('search')
+    $("#search").val(searchPhrase)
+
+    // apply filtering by search phrase
+    search()
 
     let hash = window.location.hash.substr(1);
     toggleByID(hash);

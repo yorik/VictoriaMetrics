@@ -1,10 +1,15 @@
 function expandAll() {
-    $(".group-heading").show()
-    $('.collapse').addClass('show');
+    $('.group-heading').each(function () {
+        let style = $(this).attr("style")
+        // display only elements that are currently visible
+        if (style === "display: none;") {
+            return
+        }
+        $(this).next().addClass('show')
+    });
 }
 
 function collapseAll() {
-    $(".group-heading").show()
     $('.collapse').removeClass('show');
 }
 
@@ -29,8 +34,9 @@ function debounce(func, delay) {
 
 $('#search').on("keyup", debounce(search, 500));
 
+// search shows or hides groups&rules that satisfy the search phrase.
+// case-insensitive, respects GET param `search`.
 function search() {
-    $(".rule-table").removeClass('show');
     $(".rule").show();
 
     let groupHeader = $(".group-heading")
@@ -41,6 +47,7 @@ function search() {
         return
     }
 
+    $(".rule-table").removeClass('show');
     groupHeader.hide()
 
     searchPhrase = searchPhrase.toLowerCase()
@@ -79,7 +86,7 @@ function filterGroupsByName(searchPhrase) {
 
 function filterRuleByName(searchPhrase) {
     $(".rule").each(function () {
-        const ruleName = $(this).attr("data-rule-name");
+        const ruleName = $(this).attr("data-rule-name").toLowerCase();
         const hasValue = ruleName.indexOf(searchPhrase) >= 0
 
         if (!hasValue) {
@@ -97,7 +104,7 @@ function filterRuleByName(searchPhrase) {
 function filterRuleByLabels(searchPhrase) {
     $(".rule").each(function () {
         const matches = $(".label", this).filter(function () {
-            const label = $(this).text();
+            const label = $(this).text().toLowerCase();
             return label.indexOf(searchPhrase) >= 0;
         }).length;
 

@@ -84,7 +84,8 @@ func TestRemoteWriteContext_TryPush_ImmutableTimeseries(t *testing.T) {
 
 		if len(streamAggrConfig) > 0 {
 			f := createFile(t, []byte(streamAggrConfig))
-			sas, err := streamaggr.LoadFromFile(f.Name(), nil, nil)
+			sas := streamaggr.NewAggregators(f.Name(), nil, nil)
+			err := sas.Load()
 			if err != nil {
 				t.Fatalf("cannot load streamaggr configs: %s", err)
 			}

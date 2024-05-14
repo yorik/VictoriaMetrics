@@ -818,7 +818,8 @@ func newRemoteWriteCtx(argIdx int, remoteWriteURL *url.URL, maxInmemoryBlocks in
 			IgnoreOldSamples:     ignoreOldSamples,
 			IgnoreFirstIntervals: *streamAggrIgnoreFirstIntervals,
 		}
-		sas, err := streamaggr.LoadFromFile(sasFile, rwctx.pushInternalTrackDropped, opts)
+		sas := streamaggr.NewAggregators(sasFile, rwctx.pushInternalTrackDropped, opts)
+		err := sas.Load()
 		if err != nil {
 			logger.Fatalf("cannot initialize stream aggregators from -remoteWrite.streamAggr.config=%q: %s", sasFile, err)
 		}
@@ -838,7 +839,7 @@ func (rwctx *remoteWriteCtx) MustStop() {
 	// sas and deduplicator must be stopped before rwctx is closed
 	// because sas can write pending series to rwctx.pss if there are any
 	sas := rwctx.sas.Swap(nil)
-	sas.MustStop()
+	sas.MustStop(nil)
 
 	if rwctx.deduplicator != nil {
 		rwctx.deduplicator.MustStop()
@@ -986,37 +987,10 @@ func (rwctx *remoteWriteCtx) tryPushInternal(tss []prompbmarshal.TimeSeries) boo
 }
 
 func (rwctx *remoteWriteCtx) reinitStreamAggr() {
-	sasFile := streamAggrConfig.GetOptionalArg(rwctx.idx)
-	if sasFile == "" {
-		// There is no stream aggregation for rwctx
-		return
-	}
-
-	logger.Infof("reloading stream aggregation configs pointed by -remoteWrite.streamAggr.config=%q", sasFile)
-	metrics.GetOrCreateCounter(fmt.Sprintf(`vmagent_streamaggr_config_reloads_total{path=%q}`, sasFile)).Inc()
-	opts := &streamaggr.Options{
-		DedupInterval:    streamAggrDedupInterval.GetOptionalArg(rwctx.idx),
-		DropInputLabels:  *streamAggrDropInputLabels,
-		IgnoreOldSamples: streamAggrIgnoreOldSamples.GetOptionalArg(rwctx.idx),
-	}
-	sasNew, err := streamaggr.LoadFromFile(sasFile, rwctx.pushInternalTrackDropped, opts)
-	if err != nil {
-		metrics.GetOrCreateCounter(fmt.Sprintf(`vmagent_streamaggr_config_reloads_errors_total{path=%q}`, sasFile)).Inc()
-		metrics.GetOrCreateCounter(fmt.Sprintf(`vmagent_streamaggr_config_reload_successful{path=%q}`, sasFile)).Set(0)
-		logger.Errorf("cannot reload stream aggregation config from -remoteWrite.streamAggr.config=%q; continue using the previously loaded config; error: %s", sasFile, err)
-		return
-	}
 	sas := rwctx.sas.Load()
-	if !sasNew.Equal(sas) {
-		sasOld := rwctx.sas.Swap(sasNew)
-		sasOld.MustStop()
-		logger.Infof("successfully reloaded stream aggregation configs at -remoteWrite.streamAggr.config=%q", sasFile)
-	} else {
-		sasNew.MustStop()
-		logger.Infof("the config at -remoteWrite.streamAggr.config=%q wasn't changed", sasFile)
+	if err := sas.Reload(); err != nil {
+		logger.Errorf("cannot reload stream aggregation config: %s", err)
 	}
-	metrics.GetOrCreateCounter(fmt.Sprintf(`vmagent_streamaggr_config_reload_successful{path=%q}`, sasFile)).Set(1)
-	metrics.GetOrCreateCounter(fmt.Sprintf(`vmagent_streamaggr_config_reload_success_timestamp_seconds{path=%q}`, sasFile)).Set(fasttime.UnixTimestamp())
 }
 
 var tssPool = &sync.Pool{
@@ -1046,11 +1020,12 @@ func CheckStreamAggrConfigs() error {
 			DropInputLabels:  *streamAggrDropInputLabels,
 			IgnoreOldSamples: streamAggrIgnoreOldSamples.GetOptionalArg(idx),
 		}
-		sas, err := streamaggr.LoadFromFile(sasFile, pushNoop, opts)
+		sas := streamaggr.NewAggregators(sasFile, pushNoop, opts)
+		err := sas.Load()
 		if err != nil {
 			return fmt.Errorf("cannot load -remoteWrite.streamAggr.config=%q: %w", sasFile, err)
 		}
-		sas.MustStop()
+		sas.MustStop(nil)
 	}
 	return nil
 }

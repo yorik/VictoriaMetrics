@@ -15,7 +15,6 @@ import (
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/prompbmarshal"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/storage"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/streamaggr"
-	"github.com/VictoriaMetrics/metrics"
 )
 
 var (
@@ -42,11 +41,6 @@ var (
 	saCfgReloaderStopCh chan struct{}
 	saCfgReloaderWG     sync.WaitGroup
 
-	saCfgReloads   = metrics.NewCounter(`vminsert_streamagg_config_reloads_total`)
-	saCfgReloadErr = metrics.NewCounter(`vminsert_streamagg_config_reloads_errors_total`)
-	saCfgSuccess   = metrics.NewGauge(`vminsert_streamagg_config_last_reload_successful`, nil)
-	saCfgTimestamp = metrics.NewCounter(`vminsert_streamagg_config_last_reload_success_timestamp_seconds`)
-
 	sasGlobal    atomic.Pointer[streamaggr.Aggregators]
 	deduplicator *streamaggr.Deduplicator
 )
@@ -63,11 +57,12 @@ func CheckStreamAggrConfig() error {
 		IgnoreOldSamples:     *streamAggrIgnoreOldSamples,
 		IgnoreFirstIntervals: *streamAggrIgnoreFirstIntervals,
 	}
-	sas, err := streamaggr.LoadFromFile(*streamAggrConfig, pushNoop, opts)
+	sas := streamaggr.NewAggregators(*streamAggrConfig, pushNoop, opts)
+	err := sas.Load()
 	if err != nil {
 		return fmt.Errorf("error when loading -streamAggr.config=%q: %w", *streamAggrConfig, err)
 	}
-	sas.MustStop()
+	sas.MustStop(nil)
 	return nil
 }
 
@@ -92,14 +87,13 @@ func InitStreamAggr() {
 		IgnoreOldSamples:     *streamAggrIgnoreOldSamples,
 		IgnoreFirstIntervals: *streamAggrIgnoreFirstIntervals,
 	}
-	sas, err := streamaggr.LoadFromFile(*streamAggrConfig, pushAggregateSeries, opts)
+	sas := streamaggr.NewAggregators(*streamAggrConfig, pushAggregateSeries, opts)
+	err := sas.Load()
 	if err != nil {
 		logger.Fatalf("cannot load -streamAggr.config=%q: %s", *streamAggrConfig, err)
 	}
 
 	sasGlobal.Store(sas)
-	saCfgSuccess.Set(1)
-	saCfgTimestamp.Set(fasttime.UnixTimestamp())
 
 	// Start config reloader.
 	saCfgReloaderWG.Add(1)
@@ -117,33 +111,10 @@ func InitStreamAggr() {
 }
 
 func reloadStreamAggrConfig() {
-	logger.Infof("reloading -streamAggr.config=%q", *streamAggrConfig)
-	saCfgReloads.Inc()
-
-	opts := &streamaggr.Options{
-		DedupInterval:        *streamAggrDedupInterval,
-		DropInputLabels:      *streamAggrDropInputLabels,
-		IgnoreOldSamples:     *streamAggrIgnoreOldSamples,
-		IgnoreFirstIntervals: *streamAggrIgnoreFirstIntervals,
-	}
-	sasNew, err := streamaggr.LoadFromFile(*streamAggrConfig, pushAggregateSeries, opts)
-	if err != nil {
-		saCfgSuccess.Set(0)
-		saCfgReloadErr.Inc()
-		logger.Errorf("cannot reload -streamAggr.config=%q: use the previously loaded config; error: %s", *streamAggrConfig, err)
-		return
-	}
 	sas := sasGlobal.Load()
-	if !sasNew.Equal(sas) {
-		sasOld := sasGlobal.Swap(sasNew)
-		sasOld.MustStop()
-		logger.Infof("successfully reloaded stream aggregation config at -streamAggr.config=%q", *streamAggrConfig)
-	} else {
-		logger.Infof("nothing changed in -streamAggr.config=%q", *streamAggrConfig)
-		sasNew.MustStop()
+	if err := sas.Reload(); err != nil {
+		logger.Errorf("cannot reload stream aggregation config: %s", err)
 	}
-	saCfgSuccess.Set(1)
-	saCfgTimestamp.Set(fasttime.UnixTimestamp())
 }
 
 // MustStopStreamAggr stops stream aggregators.
@@ -152,7 +123,7 @@ func MustStopStreamAggr() {
 	saCfgReloaderWG.Wait()
 
 	sas := sasGlobal.Swap(nil)
-	sas.MustStop()
+	sas.MustStop(nil)
 
 	if deduplicator != nil {
 		deduplicator.MustStop()

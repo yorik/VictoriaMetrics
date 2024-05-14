@@ -70,6 +70,8 @@ func (ve *valuesEncoder) reset() {
 }
 
 // encode encodes values to ve.values and returns the encoded value type with min/max encoded values.
+//
+// ve.values and dict is valid until values are changed.
 func (ve *valuesEncoder) encode(values []string, dict *valuesDict) (valueType, uint64, uint64) {
 	ve.reset()
 
@@ -1091,6 +1093,12 @@ func (vd *valuesDict) copyFrom(a *arena, src *valuesDict) {
 	vd.values = dstValues
 }
 
+func (vd *valuesDict) copyFromNoArena(src *valuesDict) {
+	vd.reset()
+
+	vd.values = append(vd.values[:0], src.values...)
+}
+
 func (vd *valuesDict) getOrAdd(k string) (byte, bool) {
 	if len(k) > maxDictSizeBytes {
 		return 0, false
@@ -1137,11 +1145,11 @@ func (vd *valuesDict) unmarshal(a *arena, src []byte) ([]byte, error) {
 	dictLen := int(src[0])
 	src = src[1:]
 	for i := 0; i < dictLen; i++ {
-		tail, data, err := encoding.UnmarshalBytes(src)
-		if err != nil {
-			return srcOrig, fmt.Errorf("cannot umarshal value %d out of %d from dict: %w", i, dictLen, err)
+		data, nSize := encoding.UnmarshalBytes(src)
+		if nSize <= 0 {
+			return srcOrig, fmt.Errorf("cannot umarshal value %d out of %d from dict", i, dictLen)
 		}
-		src = tail
+		src = src[nSize:]
 
 		v := a.copyBytesToString(data)
 		vd.values = append(vd.values, v)

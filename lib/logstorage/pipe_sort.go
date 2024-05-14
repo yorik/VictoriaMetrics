@@ -13,6 +13,7 @@ import (
 
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/bytesutil"
 	"github.com/VictoriaMetrics/VictoriaMetrics/lib/memory"
+	"github.com/VictoriaMetrics/VictoriaMetrics/lib/stringsutil"
 )
 
 // pipeSort processes '| sort ...' queries.
@@ -582,7 +583,10 @@ func sortBlockLess(shardA *pipeSortProcessorShard, rowIdxA int, shardB *pipeSort
 			if ccA == ccB {
 				continue
 			}
-			return cA.c.encodedValues[0] < cB.c.encodedValues[0]
+			if isDesc {
+				return ccB < ccA
+			}
+			return ccA < ccB
 		}
 
 		if cA.c.isTime && cB.c.isTime {
@@ -639,9 +643,9 @@ func sortBlockLess(shardA *pipeSortProcessorShard, rowIdxA int, shardB *pipeSort
 			continue
 		}
 		if isDesc {
-			return sB < sA
+			return stringsutil.LessNatural(sB, sA)
 		}
-		return sA < sB
+		return stringsutil.LessNatural(sA, sB)
 	}
 	return false
 }
